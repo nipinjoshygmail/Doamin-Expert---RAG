@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Documents - RAG System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📄 Manage Documents</h1>
+            <p class="subtitle">View, and manage your indexed documents</p>
+            <nav>
+                <a href="/" class="btn btn-secondary">🏠 Home</a>
+                <a href="/upload" class="btn btn-secondary">📤 Upload More</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="document-list-section">
+                <div class="info-box">
+                    <p>This page lists all the documents currently in your knowledge base. You can remove documents you no longer need.</p>
+                </div>
+
+                <div id="messageArea"></div>
+
+                <div class="document-table-container" style="width: 100%; margin: 0 auto;">
+                    <table id="documentTable" style="width: 100%; font-size: 1.1rem; border-collapse: collapse; border: 1px solid #ddd;">
+                        <thead>
+                            <tr style="background-color: #f5f5f5;">
+                                <th style="padding: 1rem; font-size: 1.2rem; border: 1px solid #ddd; text-align: left;">File Name</th>
+                                <th style="padding: 1rem; font-size: 1.2rem; border: 1px solid #ddd; text-align: center;">Type</th>
+                                <th style="padding: 1rem; font-size: 1.2rem; border: 1px solid #ddd; text-align: center;">Size</th>
+                                <th style="padding: 1rem; font-size: 1.2rem; border: 1px solid #ddd; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="documentList">
+                            <!-- Documents will be loaded here dynamically -->
+                        </tbody>
+                    </table>
+                    <div id="loadingSpinner" style="display: none; text-align: center; padding: 2rem;">
+                        <p>⏳ Loading documents...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by LangChain, ChromaDB, and LLAMA</p>
+        </footer>
+    </div>
+
+    <script>
+        const documentList = document.getElementById('documentList');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const messageArea = document.getElementById('messageArea');
+
+        // Fetch and display documents on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchDocuments();
+        });
+
+        async function fetchDocuments() {
+            setLoading(true);
+            try {
+                const response = await fetch('/api/documents');
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    renderDocuments(data.documents);
+                } else {
+                    showMessage(data.message || 'Failed to load documents.', 'error');
+                }
+            } catch (error) {
+                console.error('Error fetching documents:', error);
+                showMessage('An error occurred while fetching documents.', 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        function renderDocuments(documents) {
+            documentList.innerHTML = '';
+
+            if (!documents || documents.length === 0) {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="4" style="text-align: center;">No documents found.</td>`;
+                documentList.appendChild(tr);
+                return;
+            }
+
+            documents.forEach(doc => {
+                const tr = document.createElement('tr');
+                tr.dataset.docId = doc.id;
+
+                const fileIcon = getFileIcon(doc.filename);
+                const fileSize = formatFileSize(doc.size);
+
+                tr.innerHTML = `
+                    <td><span class="file-icon">${fileIcon}</span> ${doc.filename}</td>
+                    <td>${doc.type}</td>
+                    <td>${fileSize}</td>
+                    <td>
+                        <button class="btn-danger" onclick="handleDelete('${doc.id}', '${doc.filename}')">
+                            🗑️ Delete
+                        </button>
+                    </td>
+                `;
+                documentList.appendChild(tr);
+            });
+        }
+
+        async function handleDelete(docId, filename) {
+            if (!confirm(`Are you sure you want to delete "${filename}"? This action cannot be undone.`)) {
+                return;
+            }
+
+            const row = document.querySelector(`tr[data-doc-Id="${docId}"]`);
+            const deleteBtn = row.querySelector('button');
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = 'Deleting...';
+
+            try {
+                const response = await fetch(`/api/documents/${docId}`, {
+                    method: 'DELETE',
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    row.style.opacity = '0';
+                    setTimeout(() => row.remove(), 300);
+                    showMessage(`Successfully deleted "${filename}".`, 'success');
+                    
+                    // Check if list is now empty
+                    if (documentList.children.length === 1) { // Only the deleted (but hidden) row remains
+                        setTimeout(() => {
+                           if (documentList.children.length === 0) {
+                               renderDocuments([]);
+                           }
+                        }, 350);
+                    }
+                } else {
+                    showMessage(data.message || `Failed to delete "${filename}".`, 'error');
+                    deleteBtn.disabled = false;
+                    deleteBtn.textContent = '🗑️ Delete';
+                }
+            } catch (error) {
+                console.error('Error deleting document:', error);
+                showMessage(`An error occurred while deleting "${filename}".`, 'error');
+                deleteBtn.disabled = false;
+                deleteBtn.textContent = '🗑️ Delete';
+            }
+        }
+
+        // Helper functions
+        function setLoading(isLoading) {
+            if (isLoading) {
+                loadingSpinner.style.display = 'block';
+                documentTable.style.display = 'none';
+            } else {
+                loadingSpinner.style.display = 'none';
+                documentTable.style.display = 'table';
+            }
+        }
+
+        function showMessage(message, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message message-${type}`;
+            messageDiv.textContent = message;
+            
+            messageArea.innerHTML = '';
+            messageArea.appendChild(messageDiv);
+
+            setTimeout(() => {
+                messageDiv.style.opacity = '0';
+                setTimeout(() => messageDiv.remove(), 300);
+            }, 5000);
+        }
+
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            const icons = {
+                pdf: '📕',
+                txt: '📄',
+                docx: '📘',
+                pptx: '📊',
+                csv: '📈',
+                mp3: '🎵',
+                wav: '🎤'
+            };
+            return icons[ext] || '📁';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === null || typeof bytes === 'undefined') return 'N/A';
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>

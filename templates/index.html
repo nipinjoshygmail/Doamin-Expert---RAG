@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Q&A System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 RAG Q&A System</h1>
+            <p class="subtitle">Ask questions about your uploaded documents</p>
+            <nav>
+                <a href="/upload" class="btn btn-secondary">📤 Upload Documents</a>
+                <a href="/documents" class="btn btn-secondary">📄 Manage Documents</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="query-section">
+                <form id="queryForm">
+                    <div class="form-group">
+                        <label for="question">Your Question:</label>
+                        <textarea 
+                            id="question" 
+                            name="question" 
+                            rows="4" 
+                            placeholder="Enter your question here..."
+                            required
+                        ></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" id="submitBtn">
+                        <span class="btn-text">🔍 Ask Question</span>
+                        <span class="spinner" style="display: none;">⏳ Processing...</span>
+                    </button>
+                </form>
+            </div>
+
+            <div id="messageArea"></div>
+
+            <div id="answerSection" style="display: none;">
+                <div class="answer-container">
+                    <div class="answer-header">
+                        <h2>💡 Answer</h2>
+                        <button id="copyBtn" class="btn-icon" title="Copy to clipboard">
+                            📋 Copy
+                        </button>
+                    </div>
+                    <div id="answerText" class="answer-text"></div>
+                    <div class="answer-footer">
+                        <p><strong>Question:</strong> <span id="questionEcho"></span></p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by LangChain, ChromaDB, and LLAMA</p>
+        </footer>
+    </div>
+
+    <script>
+        const queryForm = document.getElementById('queryForm');
+        const questionInput = document.getElementById('question');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = submitBtn.querySelector('.btn-text');
+        const spinner = submitBtn.querySelector('.spinner');
+        const messageArea = document.getElementById('messageArea');
+        const answerSection = document.getElementById('answerSection');
+        const answerText = document.getElementById('answerText');
+        const questionEcho = document.getElementById('questionEcho');
+        const copyBtn = document.getElementById('copyBtn');
+
+        // Handle form submission
+        queryForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const question = questionInput.value.trim();
+            
+            if (!question) {
+                showMessage('Please enter a question', 'error');
+                return;
+            }
+
+            // Show loading state
+            setLoading(true);
+            answerSection.style.display = 'none';
+            messageArea.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ question })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    // Display answer
+                    answerText.textContent = data.answer;
+                    questionEcho.textContent = question;
+                    answerSection.style.display = 'block';
+                    
+                    // Scroll to answer
+                    answerSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                } else {
+                    showMessage(data.message || 'An error occurred', 'error');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                showMessage('Failed to connect to server. Please try again.', 'error');
+            } finally {
+                setLoading(false);
+            }
+        });
+
+        // Copy answer to clipboard
+        copyBtn.addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText(answerText.textContent);
+                
+                // Visual feedback
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '✅ Copied!';
+                copyBtn.classList.add('success');
+                
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                    copyBtn.classList.remove('success');
+                }, 2000);
+            } catch (error) {
+                console.error('Copy failed:', error);
+                showMessage('Failed to copy to clipboard', 'error');
+            }
+        });
+
+        // Helper function to show loading state
+        function setLoading(isLoading) {
+            if (isLoading) {
+                submitBtn.disabled = true;
+                btnText.style.display = 'none';
+                spinner.style.display = 'inline';
+            } else {
+                submitBtn.disabled = false;
+                btnText.style.display = 'inline';
+                spinner.style.display = 'none';
+            }
+        }
+
+        // Helper function to show messages
+        function showMessage(message, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message message-${type}`;
+            messageDiv.textContent = message;
+            
+            messageArea.innerHTML = '';
+            messageArea.appendChild(messageDiv);
+            
+            // Auto-hide success messages
+            if (type === 'success') {
+                setTimeout(() => {
+                    messageDiv.style.opacity = '0';
+                    setTimeout(() => messageDiv.remove(), 300);
+                }, 5000);
+            }
+        }
+
+        // Auto-resize textarea
+        questionInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+    </script>
+</body>
+</html>
